@@ -51,8 +51,8 @@ class CGAN():
         # Build the cGAN
         # For the combined model we will only train the generator
         self.discriminator.trainable = False
-        self.combined = self.build_cgan()
-        self.combined.compile(loss='binary_crossentropy', optimizer=optimizer_gen)
+        self.cgan = self.build_cgan()
+        self.cgan.compile(loss='binary_crossentropy', optimizer=optimizer_gen)
         
         
     def build_generator(self):
@@ -91,9 +91,41 @@ class CGAN():
         model = Model(self.generator.inputs + self.discriminator.inputs, [yfake, yreal], name="cGAN")
         return model
     
+    def train(self,x_train, l_train, epochs=10, batch_size=128):
+        # training parameter
+        num_batches = int(x_train.shape[0] / batch_size)
+        for epoch in range(epochs):            
+            print("Epoch {}/{}".format(epoch + 1, epochs))
+            for index in range(num_batches):                
+                # train discriminator
+                self.discriminator.trainable = True
+            
+                # train discriminator on real data
+                batch       = np.random.randint(0, x_train.shape[0], size=batch_size)
+                input_batch = x_train[batch]
+                label_batch = l_train[batch]
+                y_real      = np.ones(batch_size) + 0.1 * np.random.uniform(-1, 1, size=batch_size)
+                self.discriminator.train_on_batch([input_batch, label_batch], y_real)
+                
+                # train discriminator on fake data
+                noise_batch      = np.random.normal(0, 1, (batch_size, self.latent_dim))    
+                generated_images = self.generator.predict([noise_batch, label_batch])
+                y_fake           = np.zeros(batch_size) + 0.1 * np.random.uniform(0, 1, size=batch_size)
+                d_loss = self.discriminator.train_on_batch(generated_images, y_fake)  
+                self.discriminator.trainable = False
+                
+                # train GAN
+                gan_loss = self.cgan.train_on_batch([noise_batch, label_batch, input_batch, label_batch], [y_real, y_fake])
+                print("Batch {}/{}: Discriminator loss = {}, GAN loss = {}".format(index + 1, num_batches, d_loss, gan_loss))
+        
+            
     
 if __name__ == '__main__':
     cgan = CGAN()
-    #cgan.combined.summary()
+    # show architecture --> compare with old one [SAME :)]
+    # cgan.cgan.summary()
     cgan.generator.summary()
     cgan.discriminator.summary()
+    
+    # test training
+    cgan.train(x_train,l_train_scale)
