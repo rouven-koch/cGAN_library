@@ -117,8 +117,23 @@ class CGAN():
                 # train GAN
                 gan_loss = self.cgan.train_on_batch([noise_batch, label_batch, input_batch, label_batch], [y_real, y_fake])
                 print("Batch {}/{}: Discriminator loss = {}, GAN loss = {}".format(index + 1, num_batches, d_loss, gan_loss))
+                return None
         
-            
+        
+        # next functions to implement:
+        
+        def load_data(self):
+            "function to import dataset"
+            return None
+        
+        def load_weights(self):
+            "function to load trained model"
+            return None
+        
+        def save_weights(self):
+            "function to save weights"
+            return None
+    
     
 if __name__ == '__main__':
     cgan = CGAN()
@@ -128,4 +143,4 @@ if __name__ == '__main__':
     cgan.discriminator.summary()
     
     # test training
-    cgan.train(x_train,l_train_scale)
+    # cgan.train(x_train,l_train_scale)
