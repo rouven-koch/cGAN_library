@@ -29,43 +29,71 @@ class CGAN():
         self.n_sites = 18 #number of sites of model
         self.n_omega = 50 #number of frequency points
         self.conditions = 2 #number of conditional parameters
-        self.input_shape = (self.n_sites * self.n_omega)
+        self.input_dim = self.n_sites * self.n_omega
+        self.input_shape = (self.input_dim)
         self.latent_dim = 10
 
-        optimizer_gen = Adam(0.001, 0.5) #for generator and cGAN total
-        optimizer_disc = 'SGD' #for discriminator
-
+        optimizer_gen = Adam(0.001, 0.5) #optimizer for generator and cGAN total
+        optimizer_disc = 'SGD' #optimizer for discriminator
+        
+        self.regulizer = lambda: l1_l2(1e-5, 1e-5) #kenel-regulizer for both networks
+        
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
         self.discriminator.compile(loss=['binary_crossentropy'],
             optimizer=optimizer_disc) 
-
-        # Build the generator
+           
+        # Build and compile the generator
         self.generator = self.build_generator()
         self.generator.compile(loss=['mean_squared_error'],
             optimizer=optimizer_gen) 
         
-        
-        #------ Until here ------
-        
-        
-        
-        # The generator takes noise and the target label as input
-        # and generates the corresponding digit of that label
-        noise = Input(shape=(self.latent_dim,))
-        label = Input(shape=(self.conditions,))
-        inputs = self.generator([noise, label])
-
+        # Build the cGAN
         # For the combined model we will only train the generator
         self.discriminator.trainable = False
-
-
-        # The discriminator takes generated image as input and determines validity
-        # and the label of that image
-        valid = self.discriminator([inputs, label])
-
-        # The combined model  (stacked generator and discriminator)
-        # Trains generator to fool discriminator
-        self.combined = Model([noise, label], valid)
-        self.combined.compile(loss=['binary_crossentropy'],
-            optimizer=optimizer)
+        self.combined = self.build_cgan()
+        self.combined.compile(loss='binary_crossentropy', optimizer=optimizer_gen)
+        
+        
+    def build_generator(self):
+        # generator
+        z      = Input(shape=(self.latent_dim,))
+        label  = Input(shape=(self.conditions,))
+        inputs = (Concatenate())([z, label])
+        g = (Dense(int(4048 / 2), kernel_regularizer=self.regulizer()))(inputs)
+        g = (LeakyReLU(0.2))(g)
+        g = (Dense(int(4048), kernel_regularizer=self.regulizer()))(g)
+        g = (LeakyReLU(0.2))(g)
+        g = (Dense(np.prod(self.input_dim), kernel_regularizer=self.regulizer()))(g)
+        g = (Activation(activations.tanh))(g)    
+        model = Model(inputs=[z, label], outputs=[g, label], name="generator")
+        return model
+    
+    def build_discriminator(self):
+        # discriminator
+        x      = Input(shape=(self.input_dim,))
+        label  = Input(shape=(self.conditions,))
+        inputs = (Concatenate()([x, label]))
+        d = (GaussianNoise(0.033))(inputs)
+        d = (Dense(4048, kernel_regularizer=self.regulizer()))(inputs)
+        d = (LeakyReLU(0.2))(d)
+        d = (Dense(int(4048 / 2), kernel_regularizer=self.regulizer()))(d)
+        d = (LeakyReLU(0.2))(d)
+        d = (Dense(1, kernel_regularizer=self.regulizer()))(d)
+        d = (Activation('sigmoid'))(d)
+        model = Model(inputs=[x, label], outputs=d, name="discriminator")
+        return model
+        
+    def build_cgan(self):
+        # building the cGAN
+        yfake = Activation("linear", name="yfake")(self.discriminator(self.generator(self.generator.inputs)))
+        yreal = Activation("linear", name="yreal")(self.discriminator(self.discriminator.inputs))
+        model = Model(self.generator.inputs + self.discriminator.inputs, [yfake, yreal], name="cGAN")
+        return model
+    
+    
+if __name__ == '__main__':
+    cgan = CGAN()
+    #cgan.combined.summary()
+    cgan.generator.summary()
+    cgan.discriminator.summary()
