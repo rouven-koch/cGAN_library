@@ -122,8 +122,8 @@ class CGAN():
         
         # next functions to implement:
         
-        def load_data(self):
-            "function to import dataset"
+        def import_data(self, data, label):
+            "function to import and (pre) process dataset"
             return None
         
         def load_weights(self):
@@ -141,6 +141,19 @@ if __name__ == '__main__':
     # cgan.cgan.summary()
     cgan.generator.summary()
     cgan.discriminator.summary()
+    
+    # full data
+    n_data = 2200
+    x_train = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/x_data_all.npy")
+    l_train = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/label_all.npy")
+    
+    x_train = scaler.fit_transform(x_train)  
+    l_train_scale = l_train[:,:] 
+    l_train_scale_1 = scaler_alpha.fit_transform(l_train_scale[:,0:1]) 
+    l_train_scale_2 = scaler_beta.fit_transform(l_train_scale[:,1:]) 
+    l_train_scale = np.concatenate((l_train_scale_1,l_train_scale_2), axis=1)
+
+
     
     # test training
     # cgan.train(x_train,l_train_scale)
