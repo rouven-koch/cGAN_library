@@ -2,6 +2,7 @@
 
 from __future__ import print_function, division
 
+# ML libraries
 import tensorflow as tf
 from keras import activations
 from keras.layers import Input, Dense, Reshape, Flatten, Dropout, multiply, Concatenate
@@ -12,18 +13,20 @@ from keras.models import Sequential, Model
 from keras.regularizers import l1_l2
 from keras.optimizers import Adam, SGD
 
+# other  libraries
 import matplotlib.pyplot as plt
-
 import numpy as np
-
 import sys
-
 import seaborn as sns
+from sklearn.preprocessing import MinMaxScaler
+
 
 
 
 class CGAN():
-    
+    """ Class for conditional generative adversarial networks (cGANS) and the
+        applications for many-body systems."""
+        
     def __init__(self):
         # Inputs 
         self.n_sites = 18 #number of sites of model
@@ -69,6 +72,7 @@ class CGAN():
         model = Model(inputs=[z, label], outputs=[g, label], name="generator")
         return model
     
+    
     def build_discriminator(self):
         # discriminator
         x      = Input(shape=(self.input_dim,))
@@ -83,13 +87,15 @@ class CGAN():
         d = (Activation('sigmoid'))(d)
         model = Model(inputs=[x, label], outputs=d, name="discriminator")
         return model
-        
+    
+    
     def build_cgan(self):
         # building the cGAN
         yfake = Activation("linear", name="yfake")(self.discriminator(self.generator(self.generator.inputs)))
         yreal = Activation("linear", name="yreal")(self.discriminator(self.discriminator.inputs))
         model = Model(self.generator.inputs + self.discriminator.inputs, [yfake, yreal], name="cGAN")
         return model
+
     
     def train(self,x_train, l_train, epochs=10, batch_size=128):
         # training parameter
@@ -120,12 +126,37 @@ class CGAN():
                 return None
         
         
-        # next functions to implement:
         
-        def import_data(self, data, label):
+        def format_inputs(self, data, label, val_split=0.1):
             "function to import and (pre) process dataset"
-            return None
+            
+            # use MinMaxScaler for data and label
+            scaler = MinMaxScaler(feature_range=(-1,1)) #data
+            scaler_alpha = MinMaxScaler(feature_range=(0,1)) #label 1
+            scaler_beta = MinMaxScaler(feature_range=(0,1)) #label 2
+            
+            n_samples = len(data)
+            print(n_samples)            
+            
+            # test and training data
+            x_train = scaler.fit_transform(data[:int((1-val_split)*n_samples),:]) 
+            x_test = scaler.transform(data[int((1-val_split)*n_samples):,:])
+
+            # test and training labels            
+            labels = label            
+            l_train_1 = scaler_alpha.fit_transform(labels[:int((1-val_split)*n_samples),0:1]) 
+            l_train_2 = scaler_beta.fit_transform(labels[:int((1-val_split)*n_samples),1:]) 
+            l_train = np.concatenate((l_train_1,l_train_2), axis=1)
+
+            l_test_1 = scaler_alpha.transform(labels[int((1-val_split)*n_samples):,0:1]) 
+            l_test_2 = scaler_beta.ransform(labels[int((1-val_split)*n_samples):,1:]) 
+            l_test = np.concatenate((l_test_1,l_test_2), axis=1)
+            
+            return x_train, x_test, l_train, l_test
         
+        
+        # next functions to implement:
+
         def load_weights(self):
             "function to load trained model"
             return None
@@ -133,6 +164,15 @@ class CGAN():
         def save_weights(self):
             "function to save weights"
             return None
+        
+        def cgan_generate(self):
+            "generate new samples"
+            return None
+        
+        def cgan_param_estimation(self):
+            "estimate Hamiltonian parameters"
+            return None
+    
     
     
 if __name__ == '__main__':
