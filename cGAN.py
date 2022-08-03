@@ -35,6 +35,10 @@ class CGAN():
         self.input_dim = self.n_sites * self.n_omega
         self.input_shape = (self.input_dim)
         self.latent_dim = 10
+        
+        # parameter for visualization
+        self.xs = range(self.n_sites) #x-axis = sites in real space
+        self.ys_spin = np.linspace(-0.0,2,self.n_omega) #energy (frequency) range with n_omega steps
 
         optimizer_gen = Adam(0.001, 0.5) #optimizer for generator and cGAN total
         optimizer_disc = 'SGD' #optimizer for discriminator
@@ -52,7 +56,6 @@ class CGAN():
             optimizer=optimizer_gen) 
         
         # Build the cGAN
-        # For the combined model we will only train the generator
         self.discriminator.trainable = False
         self.cgan = self.build_cgan()
         self.cgan.compile(loss='binary_crossentropy', optimizer=optimizer_gen)
@@ -97,7 +100,7 @@ class CGAN():
         return model
 
     
-    def train(self,x_train, l_train, epochs=10, batch_size=128):
+    def train(self, x_train, l_train, epochs=10, batch_size=128):
         " function for the training of the cGAN (can be quite challenging)"
 
         # training parameter
@@ -133,8 +136,8 @@ class CGAN():
         
         # use MinMaxScaler for data and label
         scaler = MinMaxScaler(feature_range=(-1,1)) #data
-        scaler_alpha = MinMaxScaler(feature_range=(0,1)) #label 1
-        scaler_beta = MinMaxScaler(feature_range=(0,1)) #label 2
+        scaler_1 = MinMaxScaler(feature_range=(0,1)) #label 1
+        scaler_2 = MinMaxScaler(feature_range=(0,1)) #label 2
         
         n_samples = len(data) #number of samples in the dataset
         
@@ -144,92 +147,116 @@ class CGAN():
     
         # test and training labels            
         labels = label            
-        l_train_1 = scaler_alpha.fit_transform(labels[:int((1-val_split)*n_samples),0:1]) 
-        l_train_2 = scaler_beta.fit_transform(labels[:int((1-val_split)*n_samples),1:]) 
+        l_train_1 = scaler_1.fit_transform(labels[:int((1-val_split)*n_samples),0:1]) 
+        l_train_2 = scaler_2.fit_transform(labels[:int((1-val_split)*n_samples),1:]) 
         l_train = np.concatenate((l_train_1,l_train_2), axis=1)
     
-        l_test_1 = scaler_alpha.transform(labels[int((1-val_split)*n_samples):,0:1]) 
-        l_test_2 = scaler_beta.transform(labels[int((1-val_split)*n_samples):,1:]) 
+        l_test_1 = scaler_1.transform(labels[int((1-val_split)*n_samples):,0:1]) 
+        l_test_2 = scaler_2.transform(labels[int((1-val_split)*n_samples):,1:]) 
         l_test = np.concatenate((l_test_1,l_test_2), axis=1)
         
-        return x_train, x_test, l_train, l_test
-        
-        
-    # next functions to implement:
-
-    def load_weights(self, cGAN):
+        return x_train, x_test, l_train, l_test, scaler, scaler_1, scaler_2
+     
+    
+    def load_weights_S1(self, cGAN):
         "function to load trained model"
                 
         # weights of the trained S=1 model
         self.generator.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/generator_CcGAN_MB_18_S1.h5')
         self.discriminator.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/discriminator_CcGAN_MB_18_S1.h5')
         self.cgan.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/gan_CcGAN_MB_18_S1.h5')
+        
+        return cGAN   
+    
+    
+    def generate_S1(self, param_1, param_2, scaler, scaler_1, scaler_2, batch_size=128):
+        """ function to generate new samples.
+            insert both conditional parameters, scaled in the interval I=[0,1]"""
+        
+        # initilize sampling 
+        noise_batch = np.random.normal(0, 1, (batch_size, self.latent_dim)) 
+        noise_batch[0] = np.random.uniform(0, 1, (1, self.latent_dim))
+        generate_batch = np.zeros((batch_size,2))
+        
+        # conditional parameter
+        generate_batch[0,0] = param_1 # insert here N_y scaled in [0.0, 1.0]  
+        generate_batch[0,1] = param_2  # insert here B_y scaled in [0.0, 1.0] 
+        
+        # make new prediction
+        pred = self.generator.predict([noise_batch, generate_batch])[0]
+        pred_scale = scaler.inverse_transform(pred)
+        
+        # print real conditional parameter values
+        param_1_rescaled = scaler_1.inverse_transform(generate_batch)
+        print('conditional parameter (S=1 model):')
+        print('N_y = ',  param_1_rescaled[0,0])
+        param_2_rescaled = scaler_2.inverse_transform(generate_batch)
+        print('B_x = ', param_2_rescaled[0,1])
+                 
+        # 3D plot
+        plot_3D = np.zeros((self.n_omega, self.n_sites))
+        for j in range(self.n_sites):
+            for i in range(self.n_omega):
+                plot_3D[i,j]=pred_scale[0,j*self.n_omega+i]
+                
+        matplotlib.rcParams['font.family'] = "Bitstream Vera Serif"
+        fig = plt.figure()
+        fig.subplots_adjust(0.2,0.2)
+        plt.contourf(self.xs,self.ys_spin,plot_3D, 100)
+        plt.ylabel("frequency [J]")
+        plt.xlabel("site")
+        plt.show()
+        
+        return None
+    
+    
+    
+    
+    # next functions to implement and test:
 
-        return cGAN
+        
+    def data_2D_to_3D(self, data_2D):
+        """ convert 2D (input shape) to 3D data (plot shape)"""
+        
+        data_3D = np.zeros((len(data_2D), self.n_omega, self.n_sites))
+        for k in range(len(data_2D)):
+            for j in range(self.n_sites):
+               for i in range(self.n_omega):
+                   data_3D[i,j]=data_2D[k,j*self.n_omega+i]     
+                   
+        return data_3D
+    
+    
+    def data_3D_to_2D(self, data_3D):
+        """ convert 3D (plot shape) 2D data (input shape)"""
+        
+        n_data = len(data_3D)
+        data_2D = np.zeros((n_data, self.n_omega*self.n_sites))        
+        for k in range(n_data):
+            for m in range(self.n_sites):
+                for l in range(self.n_omega):
+                    data_2D[k,m*self.n_omega+l] = data_3D[k,l,m] 
+                    
+        return data_2D
+    
     
     
     def save_weights(self):
         "function to save weights"
         return None
+        
     
-    
-    def cgan_generate(self):
-        "generate new samples"
-        
-        # initilize sampling 
-        noise_batch = np.random.normal(0, 1, (batch_size, noise_dim)) 
-        noise_batch[0] = np.random.uniform(0, 1, (1, noise_dim))
-        test_label_batch = np.zeros((batch_size,2))
-        
-        # conditional parameter
-        test_label_batch[0,0] = 0.3 # insert here N_y scaled in [0.0, 1.0]  
-        test_label_batch[0,1] = 0.9  # insert here B_y scaled in [0.0, 1.0] 
-        
-        # make new prediction
-        pred = generator_S1.predict([noise_batch, test_label_batch])[0]
-        pred_scale = scaler.inverse_transform(pred)
-        
-        # print real conditional parameter values
-        N_real = scaler_alpha.inverse_transform(test_label_batch)
-        print('conditional parameter:')
-        print('N_y =',  N_real[0,0])
-        B_real = scaler_beta.inverse_transform(test_label_batch)
-        print('B_x =', B_real[0,1])
-        
-        # 3D plot
-        d3_plot_gan = np.zeros((omega_dim,18))
-        for j in range(18):
-            for i in range(omega_dim):
-                d3_plot_gan[i,j]=pred_scale[0,j*omega_dim+i]
-        
-        matplotlib.rcParams['font.family'] = "Bitstream Vera Serif"
-        fig = plt.figure()
-        fig.subplots_adjust(0.2,0.2)
-        plt.contourf(xs,ys_spin,d3_plot_gan,100)
-        plt.ylabel("frequency [J]")
-        plt.xlabel("Site")
-        plt.show()
-        
-        # plot validation data
-        n_plot = 0
-        print(label_test_1[n_plot])
-        
-        matplotlib.rcParams['font.family'] = "Bitstream Vera Serif"
-        fig = plt.figure()
-        fig.subplots_adjust(0.2,0.2)
-        plt.contourf(xs,ys_spin,dos_test_1[n_plot,:,:],100)
-        plt.ylabel("frequency [J]")
-        plt.xlabel("Site")
-        plt.show()
-        
+    def create_3D_plot(self):
+        """ create 3D plot of dynamical correlator """
         return None
-    
     
     def cgan_param_estimation(self):
         "estimate Hamiltonian parameters"
         return None
     
     
+    
+# TEST CODE HERE    
     
 if __name__ == '__main__':
     
@@ -246,12 +273,13 @@ if __name__ == '__main__':
     label_all = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/label_all.npy")
     
     # preprocess data 
-    x_train, x_test, l_train, l_test = cgan.format_inputs(data_all, label_all)
+    x_train, x_test, l_train, l_test, scaler, scaler_1, scaler_2 = cgan.format_inputs(data_all, label_all)
     
     # load weights of pretrained model (here: only for the S=1 model)
-    cgan = cgan.load_weights(cgan)
+    cgan = cgan.load_weights_S1(cgan)
 
     # generate new sample
+    cgan.generate_S1(0.5, 0.5, scaler, scaler_1, scaler_2)
     
     # parameter estimation (2 parameters)
 
