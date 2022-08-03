@@ -40,6 +40,10 @@ class CGAN():
         self.xs = range(self.n_sites) #x-axis = sites in real space
         self.ys_spin = np.linspace(-0.0,2,self.n_omega) #energy (frequency) range with n_omega steps
 
+
+        # TO-DO split this part into different modes (different = systems)
+
+
         optimizer_gen = Adam(0.001, 0.5) #optimizer for generator and cGAN total
         optimizer_disc = 'SGD' #optimizer for discriminator
         
@@ -216,31 +220,26 @@ class CGAN():
 
         
     def data_2D_to_3D(self, data_2D):
-        """ convert 2D (input shape) to 3D data (plot shape)"""
-        
+        """ convert 2D (input shape) to 3D data (plot shape)"""        
         data_3D = np.zeros((len(data_2D), self.n_omega, self.n_sites))
         for k in range(len(data_2D)):
             for j in range(self.n_sites):
                for i in range(self.n_omega):
-                   data_3D[i,j]=data_2D[k,j*self.n_omega+i]     
-                   
+                   data_3D[i,j]=data_2D[k,j*self.n_omega+i]                        
         return data_3D
     
     
     def data_3D_to_2D(self, data_3D):
-        """ convert 3D (plot shape) 2D data (input shape)"""
-        
+        """ convert 3D (plot shape) 2D data (input shape)"""       
         n_data = len(data_3D)
         data_2D = np.zeros((n_data, self.n_omega*self.n_sites))        
         for k in range(n_data):
             for m in range(self.n_sites):
                 for l in range(self.n_omega):
-                    data_2D[k,m*self.n_omega+l] = data_3D[k,l,m] 
-                    
+                    data_2D[k,m*self.n_omega+l] = data_3D[k,l,m]                     
         return data_2D
     
-    
-    
+        
     def save_weights(self):
         "function to save weights"
         return None
@@ -249,6 +248,7 @@ class CGAN():
     def create_3D_plot(self):
         """ create 3D plot of dynamical correlator """
         return None
+
     
     def cgan_param_estimation(self):
         "estimate Hamiltonian parameters"
