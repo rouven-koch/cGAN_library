@@ -41,7 +41,7 @@ class CGAN():
         self.ys_spin = np.linspace(-0.0,2,self.n_omega) #energy (frequency) range with n_omega steps
 
 
-        # TO-DO split this part into different modes (different = systems)
+        # TO-DO: split this part into different modes or different sub-classes? (different = systems)
 
 
         optimizer_gen = Adam(0.001, 0.5) #optimizer for generator and cGAN total
@@ -250,7 +250,7 @@ class CGAN():
         return None
 
     
-    def cgan_param_estimation(self):
+    def param_estimation(self):
         "estimate Hamiltonian parameters"
         return None
     
