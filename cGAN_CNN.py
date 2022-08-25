@@ -2,19 +2,29 @@
 
 from __future__ import print_function, division
 
-# ML libraries
+# import libraries and packages
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
 import tensorflow as tf
-from keras import activations
-from keras.layers import Input, Dense, Reshape, Flatten, Dropout, multiply, Concatenate
-from keras.layers import BatchNormalization, Activation, Embedding, ZeroPadding2D, GaussianNoise
-from keras.layers.advanced_activations import LeakyReLU
-from keras.layers.convolutional import UpSampling2D, Conv2D
-from keras.models import Sequential, Model, load_model
+from keras.layers import LeakyReLU, Activation, Input, Dense, Dropout, Concatenate, BatchNormalization, GaussianNoise
+from keras.models import Model,Sequential
 from keras.regularizers import l1_l2
-from keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers import Adam, SGD
+from keras import activations
+from tensorflow.keras.models import load_model
+
+from keras import backend as K
+from keras.layers import Input, Dense, Reshape, Flatten, Concatenate, UpSampling2D,MaxPool2D
+from keras.layers import BatchNormalization, Activation, Embedding, multiply
+from keras.layers.advanced_activations import LeakyReLU
+from keras.layers.convolutional import Conv2D, Conv2DTranspose
+
+# check if GPU is used
+tf.config.list_physical_devices('GPU')
 
 # other  libraries
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import sys
 import seaborn as sns
@@ -23,74 +33,80 @@ from sklearn.preprocessing import MinMaxScaler
 
 
 
-class CGAN():
-    """ Class for conditional generative adversarial networks (cGANS) and the
-        applications for many-body systems."""
+class CGAN_CNN():
+    """ Class for conditional generative adversarial networks (cGANS) 
+        using Convolutional Neural Networks (CNNs)."""
         
     def __init__(self):
         # Inputs 
         self.n_sites = 18 # number of sites of model
-        self.n_omega = 50 # number of frequency points
         self.conditions = 2 # number of conditional parameters
-        self.input_dim = self.n_sites * self.n_omega
-        self.input_shape = (self.input_dim)
-        self.latent_dim = 10
+        self.pixels = 28
+        self.input_dim = self.pixels * self.pixels
+        self.input_shape = (self.pixels, self.input_pixels)
+        self.latent_dim = 100
         
         # parameter for visualization
-        self.xs = range(self.n_sites) # x-axis = sites in real space
-        self.ys_spin = np.linspace(-0.0,2,self.n_omega) # energy (frequency) range with n_omega steps
-
-        optimizer_gen = Adam(0.001, 0.5) # optimizer for generator and cGAN total
-        optimizer_disc = 'SGD' # optimizer for discriminator
+        self.xs = np.linspace(-10.0,10.0,self.pixels) # x-axis ~ onsite energy 1
+        self.ys = np.linspace(-10.0,10.0,self.pixels) # y-axis ~ onsite energy 2
         
-        self.regulizer = lambda: l1_l2(1e-5, 1e-5) # kenel-regulizer for both networks
+        optimizer_gan = Adam(0.00001, 0.5) # optimizer for generator and cGAN total   
+        
+        self.regulizer = lambda: l1_l2(1e-5, 1e-5) #kenel-regulizer for both networks
         
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
         self.discriminator.compile(loss=['binary_crossentropy'],
-            optimizer=optimizer_disc) 
+            optimizer=optimizer_gan) 
            
         # Build and compile the generator
         self.generator = self.build_generator()
         self.generator.compile(loss=['mean_squared_error'],
-            optimizer=optimizer_gen) 
+            optimizer=optimizer_gan) 
         
         # Build the cGAN
         self.discriminator.trainable = False
         self.cgan = self.build_cgan()
-        self.cgan.compile(loss='binary_crossentropy', optimizer=optimizer_gen)
+        self.cgan.compile(loss='binary_crossentropy', optimizer=optimizer_gan)
+        
         
         
     def build_generator(self):
-        # generator
-        z      = Input(shape=(self.latent_dim,))
-        label  = Input(shape=(self.conditions,))
-        inputs = (Concatenate())([z, label])
-        g = (Dense(int(4048 / 2), kernel_regularizer=self.regulizer()))(inputs)
-        g = (LeakyReLU(0.2))(g)
-        g = (Dense(int(4048), kernel_regularizer=self.regulizer()))(g)
-        g = (LeakyReLU(0.2))(g)
-        g = (Dense(np.prod(self.input_dim), kernel_regularizer=self.regulizer()))(g)
-        g = (Activation(activations.tanh))(g)    
+        # generator   
+        z      = (Input(shape=(self.latent_dim,)))
+        label  = (Input(shape=(self.conditions,)))
+        inputs = (Concatenate())([z, label])       
+        # layers
+        g = (Dense(128*7*7, activation = 'relu'))(inputs)
+        g = (Reshape((7,7,128)))(g)
+        g = (Conv2DTranspose(256, (5,5), strides=(2, 2), padding='same', activation='relu'))(g)
+        g = (Dropout(0.25))(g)
+        g = (Conv2DTranspose(128, (5,5), strides=(2, 2), padding='same', activation='relu'))(g)
+        g = (Dropout(0.25))(g)
+        g = (Conv2D(1, (7,7), activation='sigmoid', padding='same'))(g)
         model = Model(inputs=[z, label], outputs=[g, label], name="generator")
         return model
     
     
     def build_discriminator(self):
-        # discriminator
-        x      = Input(shape=(self.input_dim,))
-        label  = Input(shape=(self.conditions,))
-        inputs = (Concatenate()([x, label]))
-        d = (GaussianNoise(0.033))(inputs)
-        d = (Dense(4048, kernel_regularizer=self.regulizer()))(inputs)
-        d = (LeakyReLU(0.2))(d)
-        d = (Dense(int(4048 / 2), kernel_regularizer=self.regulizer()))(d)
-        d = (LeakyReLU(0.2))(d)
-        d = (Dense(1, kernel_regularizer=self.regulizer()))(d)
-        d = (Activation('sigmoid'))(d)
+        # discriminator    
+        x      = (Input(shape=(self.pixels,self.pixels,1)))
+        label  = (Input(shape=(self.conditions,)))    
+        # layers
+        d = (Conv2D(128, (5,5), padding='same', activation='relu', input_shape=(self.pixels,self.pixels,1)))(x)
+        d = (MaxPool2D())(d)
+        d = (Dropout(0.25))(d)
+        d = (Conv2D(256, (5,5), strides=(2, 2), padding='same', activation='relu'))(d)
+        d = (MaxPool2D(strides=(2,2)))(d)
+        d = (Dropout(0.25))(d)
+        d = (Flatten())(d)
+        d = (Concatenate())([d, label])
+        d = (Dense(128, activation='relu'))(d)
+        d = (Dense(1))(d)
+        d = (Activation('sigmoid'))(d)        
         model = Model(inputs=[x, label], outputs=d, name="discriminator")
         return model
-    
+        
     
     def build_cgan(self):
         # building the cGAN
@@ -99,12 +115,15 @@ class CGAN():
         model = Model(self.generator.inputs + self.discriminator.inputs, [yfake, yreal], name="cGAN")
         return model
 
+
+
     
-    def train(self, x_train, l_train, epochs=10, batch_size=128):
+    def train(self, x_train, l_train, epochs=30, batch_size=64):
         " function for the training of the cGAN (can be quite challenging)"
 
         # training parameter
         num_batches = int(x_train.shape[0] / batch_size)
+
         for epoch in range(epochs):            
             print("Epoch {}/{}".format(epoch + 1, epochs))
             for index in range(num_batches):                
@@ -129,17 +148,41 @@ class CGAN():
                 gan_loss = self.cgan.train_on_batch([noise_batch, label_batch, input_batch, label_batch], [y_real, y_fake])
                 print("Batch {}/{}: Discriminator loss = {}, GAN loss = {}".format(index + 1, num_batches, d_loss, gan_loss))
                 return None
+         
+    
+    def save_weights_onsits(self, cGAN):
+        "function to load trained model"
+                
+        # weights of the trained S=1 model
+        self.generator.save_weights('generator_CNN_onsite.h5')
+        self.discriminator.save_weights('discriminator_CNN_onsite.h5')
+        self.cgan.save_weights('gan_CNN_onsite.h5')  
         
+        return cGAN   
+ 
+    
+    def load_weights_onsits(self, cGAN):
+        "function to load trained model"
+                
+        # weights of the trained S=1 model
+        self.generator.load_weights('generator_CNN_onsite_exp.h5')
+        self.discriminator.load_weights('discriminator_CNN_onsite_exp.h5')
+        self.cgan.load_weights('gan_CNN_onsite_exp.h5')     
+        
+        return cGAN   
+    
+     
+    # Update ----> 
         
     def format_inputs(self, data, label, val_split=0.1):
         "function to import and (pre) process dataset"
         
         # use MinMaxScaler for data and label
-        scaler = MinMaxScaler(feature_range=(-1,1)) # data
-        scaler_1 = MinMaxScaler(feature_range=(0,1)) # label 1
-        scaler_2 = MinMaxScaler(feature_range=(0,1)) # label 2
+        scaler = MinMaxScaler(feature_range=(-1,1)) #data
+        scaler_1 = MinMaxScaler(feature_range=(0,1)) #label 1
+        scaler_2 = MinMaxScaler(feature_range=(0,1)) #label 2
         
-        n_samples = len(data) # number of samples in the dataset
+        n_samples = len(data) #number of samples in the dataset
         
         # test and training data
         x_train = scaler.fit_transform(data[:int((1-val_split)*n_samples),:]) 
@@ -156,20 +199,9 @@ class CGAN():
         l_test = np.concatenate((l_test_1,l_test_2), axis=1)
         
         return x_train, x_test, l_train, l_test, scaler, scaler_1, scaler_2
-     
-    
-    def load_weights_S1(self, cGAN):
-        "function to load trained model"
-                
-        # weights of the trained S=1 model
-        self.generator.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/generator_CcGAN_MB_18_S1.h5')
-        self.discriminator.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/discriminator_CcGAN_MB_18_S1.h5')
-        self.cgan.load_weights('/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/code/gan_CcGAN_MB_18_S1.h5')
-        
-        return cGAN   
     
     
-    def generate_S1(self, param_1, param_2, scaler, scaler_1, scaler_2, batch_size=128):
+    def generate_G(self, param_1, param_2, scaler, scaler_1, scaler_2, batch_size=128):
         """ function to generate new samples.
             insert both conditional parameters, scaled in the interval I=[0,1]"""
         
@@ -252,32 +284,33 @@ class CGAN():
     
     
     
-# TEST CODE HERE    
     
-if __name__ == '__main__':
+# # TEST CODE HERE    
     
-    # define cGAN
-    cgan = CGAN()
+# if __name__ == '__main__':
     
-    # show architecture
-    # cgan.cgan.summary()
-    cgan.generator.summary()
-    cgan.discriminator.summary()
+#     # define cGAN
+#     cgan = CGAN()
     
-    # full data
-    data_all = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/x_data_all.npy")
-    label_all = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/label_all.npy")
+#     # show architecture
+#     # cgan.cgan.summary()
+#     cgan.generator.summary()
+#     cgan.discriminator.summary()
     
-    # preprocess data 
-    x_train, x_test, l_train, l_test, scaler, scaler_1, scaler_2 = cgan.format_inputs(data_all, label_all)
+#     # full data
+#     data_all = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/x_data_all.npy")
+#     label_all = np.load("/u/11/kochr1/unix/Rouven/Python/Project_2/results_paper/S1/label_all.npy")
     
-    # load weights of pretrained model (here: only for the S=1 model)
-    cgan = cgan.load_weights_S1(cgan)
+#     # preprocess data 
+#     x_train, x_test, l_train, l_test, scaler, scaler_1, scaler_2 = cgan.format_inputs(data_all, label_all)
+    
+#     # load weights of pretrained model (here: only for the S=1 model)
+#     cgan = cgan.load_weights_S1(cgan)
 
-    # generate new sample
-    cgan.generate_S1(0.5, 0.5, scaler, scaler_1, scaler_2)
+#     # generate new sample
+#     cgan.generate_S1(0.5, 0.5, scaler, scaler_1, scaler_2)
     
-    # parameter estimation (2 parameters)
+#     # parameter estimation (2 parameters)
 
-    # test training
-    #cgan.train(x_train,l_train)
+#     # test training
+#     #cgan.train(x_train,l_train)
